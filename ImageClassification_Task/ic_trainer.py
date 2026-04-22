@@ -905,7 +905,7 @@ class ICTrainer:
             #print(f'inference score {c_id}: {accuracy}')
             avg_acc+=accuracy
             wandb.log({f'inference score {c_id}': accuracy})
-        print(f'Average inference score: {avg_acc/10}')
+        print(f'Average inference score: {avg_acc/self.num_clients}')
 
 
     def clear_cache(self,):
@@ -1033,7 +1033,7 @@ class ICTrainer:
         #print("Training Mean f1 Score: ", self.overall_f1['train'][self.max_f1['epoch']])
         #print("Maximum Test Mean f1 Score: ", self.max_f1['f1'])
         self.inference()
-        if self.personalize:
+        if self.args.personalize:
             self.personalization_mode = True
             self.personalize(epoch)
             print("Personalization Started")
@@ -1136,6 +1136,6 @@ class ICTrainer:
 
 if __name__ == '__main__':
     args = parse_arguments()
-    trainer = ISICTrainer(args)
+    trainer = ICTrainer(args)
     trainer.fit()
     trainer.inference()

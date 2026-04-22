@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import multiprocessing
 from threading import Thread
+from typing import Optional
 from utils.connections import is_socket_closed
 from utils.connections import send_object
 from utils.connections import get_object
@@ -94,7 +95,7 @@ class Client(Thread):
         #   value = (target_b, lam)  – secondary label and mixing weight
         self.mixup_map: dict = {}
         # Set by the trainer just before calculate_loss() is called each iteration:
-        self.mixup_lam: float | None = None        # λ for the current batch
+        self.mixup_lam: Optional[float] = None        # λ for the current batch
         self.mixup_targets_b = None                 # secondary labels tensor for the current batch
 
     @torch.no_grad()
