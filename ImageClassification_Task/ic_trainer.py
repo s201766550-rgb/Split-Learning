@@ -590,7 +590,7 @@ class ICTrainer:
             - calculate epoch metric avg. for all clients
             - merge model weights across clients (center_back & back)
         """
-        print(f" \n\n Personalisation Phase Training {epoch}.........................................................................................")                
+        print(f" \n\n Personalisation Phase Training {epoch}.........................................................................................")
         for client_id, client in tqdm(self.clients.items()):
                 client.iterator = iter(client.train_DataLoader)
                 client.num_iterations = len(client.train_DataLoader)
@@ -1038,7 +1038,7 @@ class ICTrainer:
             self.personalize(epoch)
             print("Personalization Started")
             self.save_kv()
-            for epoch in tqdm(range(epoch,self.args.epochs)):
+            for epoch in tqdm(range(epoch, self.args.epochs)):
                 for c_id in self.client_ids:
                     self.clients[c_id].back_model.train()
                     self.sc_clients[c_id].center_back_model.eval()
