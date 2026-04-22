@@ -1,3 +1,10 @@
+## New usage
+```
+python trainer.py -c 10 -bs 64 -tbs 256 -n 80 --client_lr 1e-3 --server_lr 1e-3 \
+    --dataset CIFAR10 --seed 42 --model resnet18 --split 1 \
+    -kv --kv_refresh_rate 0 --mixup --mixup_alpha 1.0 --wandb
+```
+
 # Efficient Split Learning
 
 Welcome to the GitHub repository for Efficient Split Learning (ESL), a novel approach to optimizing distributed training of deep learning models on resource-constrained devices.
