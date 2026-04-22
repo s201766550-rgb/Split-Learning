@@ -495,19 +495,20 @@ class ICTrainer:
                     # --- Mixup (Option B): load per-sample metadata before loss ---
                     if self.args.mixup and len(client.mixup_map) > 0:
                         batch_lams, batch_targets_b = [], []
-                        for kid in client.key:
+                        for i, kid in enumerate(client.key):
                             entry = client.mixup_map.get(kid, None)
                             if entry is not None:
                                 target_b, lam = entry
                                 batch_lams.append(lam)
                                 batch_targets_b.append(target_b)
                             else:
-                                # fallback: no mixup for this sample (shouldn't happen)
+                                # fallback: treat as no-mixup (lam=1 -> only target_a contributes)
                                 batch_lams.append(1.0)
-                                batch_targets_b.append(client.targets[len(batch_targets_b)].item())
-                        # Use a single representative λ (all samples in the batch share the same λ
-                        # because we sampled once per batch during population)
-                        client.mixup_lam = batch_lams[0]
+                                batch_targets_b.append(client.targets[i].item())
+                        # Per-sample tensors so each sample uses its OWN lam from KV population
+                        client.mixup_lam = torch.tensor(
+                            batch_lams, dtype=torch.float32, device=self.device
+                        )
                         client.mixup_targets_b = torch.tensor(
                             batch_targets_b, dtype=torch.long, device=self.device
                         )

@@ -94,9 +94,11 @@ class Client(Thread):
         #   key   = id_a  (string, e.g. "0-0-37")
         #   value = (target_b, lam)  – secondary label and mixing weight
         self.mixup_map: dict = {}
-        # Set by the trainer just before calculate_loss() is called each iteration:
-        self.mixup_lam: Optional[float] = None        # λ for the current batch
-        self.mixup_targets_b = None                 # secondary labels tensor for the current batch
+        # Set by the trainer just before calculate_loss() is called each iteration.
+        # Both are per-sample tensors (length = batch size) so each sample uses
+        # its own λ from when it was mixed during KV-store population.
+        self.mixup_lam = None          # 1-D float tensor [B] of per-sample λ values
+        self.mixup_targets_b = None    # 1-D long  tensor [B] of secondary labels
 
     @torch.no_grad()
     def balanced_accuracy(self,preds,targets):
@@ -184,17 +186,22 @@ class Client(Thread):
     def calculate_loss(self, mode='train'):
         """
         Calculates the loss for the current batch.
-        If mixup is active (self.mixup_lam is not None), computes a
-        weighted sum of two cross-entropy losses using the same λ that
-        was used to blend the activations:
-            loss = λ · CE(pred, target_a) + (1-λ) · CE(pred, target_b)
+        If mixup is active, computes a PER-SAMPLE weighted CE loss so that
+        each sample uses exactly the λ that was used to blend its activation
+        during KV-store population:
+            loss_i = λ_i · CE(pred_i, target_a_i) + (1-λ_i) · CE(pred_i, target_b_i)
+            loss   = mean(loss_i)          ← averaged over the batch
         Otherwise falls back to standard single-label CE.
         """
         if self.mixup_lam is not None and self.mixup_targets_b is not None:
-            lam = self.mixup_lam
-            loss_a = self.loss_fn(self.outputs, self.targets.long())
-            loss_b = self.loss_fn(self.outputs, self.mixup_targets_b.long())
-            self.loss = lam * loss_a + (1.0 - lam) * loss_b
+            # self.mixup_lam      : float tensor [B] — per-sample λ
+            # self.mixup_targets_b: long  tensor [B] — per-sample secondary label
+            lam = self.mixup_lam.to(self.outputs.device)          # [B]
+            # CE loss per sample (reduction='none' → shape [B])
+            loss_fn_none = nn.CrossEntropyLoss(reduction='none')
+            loss_a = loss_fn_none(self.outputs, self.targets.long())           # [B]
+            loss_b = loss_fn_none(self.outputs, self.mixup_targets_b.long())  # [B]
+            self.loss = (lam * loss_a + (1.0 - lam) * loss_b).mean()
         else:
             self.loss = self.loss_fn(self.outputs, self.targets.long())
 
