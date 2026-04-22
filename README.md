@@ -51,7 +51,3 @@ options:
   --offload_only        USE SERVER ONLY FOR OFFLOADING, CURRENTLY ONLY IMPLEMENTED FOR
                         IXI-TINY (default: False)
 ```
-  pages={1-1},
-  keywords={Computational modeling;Training;Servers;Internet of Things;Data models;Quantization (signal);Convergence;Communication Reduction;Federated Learning;IoT;Key-Value Store;Personalization;Resource-Constrained Devices;Split Learning},
-  doi={10.1109/JIOT.2024.3424660}}
-```
