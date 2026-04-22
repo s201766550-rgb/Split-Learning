@@ -209,11 +209,13 @@ class ConnectedClient(object):
 
 
     def send_remote_activations2(self):
-        send_object(self.conn, self.remote_activations2)
+        # Cast to FP16 before sending → 2× bandwidth reduction on server→client path
+        send_object(self.conn, self.remote_activations2.half())
 
 
     def get_remote_activations2_grads(self):
-        self.remote_activations2.grad = get_object(self.conn)
+        # Client sends gradient in FP16 → cast back to FP32 for stable backward pass
+        self.remote_activations2.grad = get_object(self.conn).float()
 
 
     def send_remote_activations1_grads(self):

@@ -349,7 +349,8 @@ class Client(Thread):
 
 
     def get_remote_activations2(self):
-        self.remote_activations2 = get_object(self.socket)
+        # Server sends activation in FP16 → cast back to FP32 for stable computation
+        self.remote_activations2 = get_object(self.socket).float().requires_grad_(True)
 
 
     def idle(self):
@@ -361,7 +362,8 @@ class Client(Thread):
     
 
     def send_remote_activations2_grads(self):
-        send_object(self.socket, self.remote_activations2.grad)
+        # Cast gradient to FP16 before sending → 2× bandwidth reduction on client→server path
+        send_object(self.socket, self.remote_activations2.grad.half())
 
 
     def step_front(self):
