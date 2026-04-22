@@ -163,6 +163,20 @@ def parse_arguments():
         help="USE SERVER ONLY FOR OFFLOADING, CURRENTLY ONLY IMPLEMENTED FOR IXI-TINY & KITS19",
     )
 
+    parser.add_argument(
+        "--mixup",
+        action="store_true",
+        default=False,
+        help="Enable Mixup privacy: client mixes two front-model activations before sending to server",
+    )
+
+    parser.add_argument(
+        "--mixup_alpha",
+        type=float,
+        default=1.0,
+        help="Alpha (concentration) parameter for the Beta distribution used to sample mixup lambda (default: 1.0 = uniform)",
+    )
+
 
     args = parser.parse_args()
     return args

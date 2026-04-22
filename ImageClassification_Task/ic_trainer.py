@@ -356,56 +356,96 @@ class ICTrainer:
         return num_iters
     
     
-    def store_forward_mappings_kv(self,mode='train'):
+    def store_forward_mappings_kv(self, mode='train'):
         """
-        kv: key-value store {data_key:np.Array}\n
-        since client-side front model & server-side center-front model is "frozen"
+        kv: key-value store {data_key: np.Array}
+        Since client-side front model & server-side center-front model is "frozen"
         - we only need the outputs from both the models once
         - the outputs are stored in activation mappings, each output with its own index
         - the targets are stored in target mappings, each target with its own index
-        
-        these values are reused every epoch / refreshed once in a while, this is done for both train and test mappings
-        """    
-        if mode=='train':
+
+        Mixup (Option B): when --mixup is enabled and mode == 'train',
+        the client mixes its front-model output for two samples BEFORE the
+        server ever sees any activation.  Only the blended tensors are stored
+        in the server-side KV store.  The pairing metadata
+            {id_a: (target_b, lam)}
+        is kept entirely on the client (client.mixup_map) so the correct
+        weighted loss can be applied during training.
+        """
+        if mode == 'train':
             # create iterators for initial forward pass of training phase
             for c_id, client in self.clients.items():
-                client.kv_flag=1
-                self.sc_clients[c_id].kv_flag=1
+                client.kv_flag = 1
+                self.sc_clients[c_id].kv_flag = 1
                 client.num_iterations = len(client.train_DataLoader)
                 client.iterator = iter(client.train_DataLoader)
-            # forward client-side front model which sets activation and target mappings.
+
             for c_id, client in tqdm(self.clients.items()):
-                #print(c_id,client.num_iterations)
-                for it in tqdm(range(client.num_iterations * self.args.kv_factor),desc="client front"):
+                for it in tqdm(range(client.num_iterations * self.args.kv_factor), desc="client front"):
+                    # --- Client runs its front model to produce raw activations ---
                     client.forward_front_key_value()
-                    self.sc_clients[c_id].remote_activations1 = client.remote_activations1
+
+                    # --- Mixup Option B: mix BEFORE sending to the server ---
+                    if self.args.mixup:
+                        acts = client.remote_activations1   # shape: [B, C, H, W]
+                        keys = client.key                   # list of string ids, length B
+                        targets = client.targets            # tensor of labels, length B
+                        B = acts.shape[0]
+
+                        # Shuffle indices within the batch to form pairs (A, B)
+                        perm = torch.randperm(B, device=acts.device)
+
+                        # Sample a single λ from Beta(alpha, alpha) for the whole batch
+                        lam = float(np.random.beta(self.args.mixup_alpha, self.args.mixup_alpha))
+
+                        # Blend: mixed = λ·act_A + (1-λ)·act_B
+                        mixed_acts = lam * acts + (1.0 - lam) * acts[perm]
+
+                        # Record the pairing in the client's private mixup_map
+                        # key = id_a,  value = (target_b scalar, lam)
+                        for i in range(B):
+                            id_a = keys[i]
+                            target_b = targets[perm[i]].item()
+                            client.mixup_map[id_a] = (target_b, lam)
+
+                        # Detach and require grad so backward still works
+                        mixed_acts = mixed_acts.detach().requires_grad_(True)
+
+                        # Hand the MIXED activation to the server — it never sees raw acts
+                        self.sc_clients[c_id].remote_activations1 = mixed_acts
+                    else:
+                        # No mixup: server gets the original activation
+                        self.sc_clients[c_id].remote_activations1 = client.remote_activations1
+
                     self.sc_clients[c_id].batchkeys = client.key
                     self.sc_clients[c_id].forward_center_front()
+
                 print(f"Training Set Key Value Store Created for Client {c_id}")
-                print("Training Set Key Value Store Length is :", len((list(self.sc_clients[c_id].activation_mappings.keys()))))
-                client.kv_flag=0
-                self.sc_clients[c_id].kv_flag=0
+                print("Training Set Key Value Store Length is :",
+                      len(list(self.sc_clients[c_id].activation_mappings.keys())))
+                if self.args.mixup:
+                    print(f"  Mixup map size for Client {c_id}: {len(client.mixup_map)}")
+                client.kv_flag = 0
+                self.sc_clients[c_id].kv_flag = 0
         else:
-            # create iterators for initial forward pass of testing phase
+            # Test/validation mode — no mixup applied; we evaluate on clean activations
             for c_id, client in self.clients.items():
-                client.kv_test_flag=1
-                self.sc_clients[c_id].kv_test_flag=1
+                client.kv_test_flag = 1
+                self.sc_clients[c_id].kv_test_flag = 1
                 client.num_test_iterations = len(client.test_DataLoader)
                 client.test_iterator = iter(client.test_DataLoader)
-                
-            # forward client-side front model which sets activation and target mappings.
+
             for c_id, client in tqdm(self.clients.items()):
-                #print(c_id,client.num_test_iterations)
-                for it in tqdm(range(client.num_test_iterations * self.args.kv_factor),desc="server front"):
-                    #if client.data_key % len(client.train_dataset) == 0:
+                for it in tqdm(range(client.num_test_iterations * self.args.kv_factor), desc="server front"):
                     client.forward_front_key_value_test()
                     self.sc_clients[c_id].remote_activations1 = client.remote_activations1
                     self.sc_clients[c_id].test_batchkeys = client.test_key
                     self.sc_clients[c_id].forward_center_front_test()
                 print(f"Validation Set Key Value Store Created for Client {c_id}")
-                print("Validation Set Key Value Store Length is :", len(list(self.sc_clients[c_id].test_activation_mappings.keys())))
-                client.kv_test_flag=0
-                self.sc_clients[c_id].kv_test_flag=0
+                print("Validation Set Key Value Store Length is :",
+                      len(list(self.sc_clients[c_id].test_activation_mappings.keys())))
+                client.kv_test_flag = 0
+                self.sc_clients[c_id].kv_test_flag = 0
 
     def populate_key_value_store(self,):
         """
@@ -442,37 +482,62 @@ class ICTrainer:
         for client_id, client in tqdm(self.clients.items()):
                 client.iterator = iter(client.train_DataLoader)
                 client.num_iterations = len(client.train_DataLoader)
-                #for it in tqdm(range(client.num_iterations * self.args.kv_factor),desc="Training"):
-                for iteration in tqdm(range(client.num_iterations),desc="Generalization Phase Training"):
+                for iteration in tqdm(range(client.num_iterations), desc="Generalization Phase Training"):
                     client.forward_front_key_value()
                     self.sc_clients[client_id].batchkeys = client.key
-                    
+
                     self.sc_clients[client_id].forward_center_front()
                     self.sc_clients[client_id].forward_center_back()
                     client.remote_activations2 = self.sc_clients[client_id].remote_activations2
-                    
+
                     client.forward_back()
+
+                    # --- Mixup (Option B): load per-sample metadata before loss ---
+                    if self.args.mixup and len(client.mixup_map) > 0:
+                        batch_lams, batch_targets_b = [], []
+                        for kid in client.key:
+                            entry = client.mixup_map.get(kid, None)
+                            if entry is not None:
+                                target_b, lam = entry
+                                batch_lams.append(lam)
+                                batch_targets_b.append(target_b)
+                            else:
+                                # fallback: no mixup for this sample (shouldn't happen)
+                                batch_lams.append(1.0)
+                                batch_targets_b.append(client.targets[len(batch_targets_b)].item())
+                        # Use a single representative λ (all samples in the batch share the same λ
+                        # because we sampled once per batch during population)
+                        client.mixup_lam = batch_lams[0]
+                        client.mixup_targets_b = torch.tensor(
+                            batch_targets_b, dtype=torch.long, device=self.device
+                        )
+                    else:
+                        client.mixup_lam = None
+                        client.mixup_targets_b = None
+
                     client.calculate_loss(mode='train')
-                    
+
+                    # Reset mixup fields after loss so test paths are never affected
+                    client.mixup_lam = None
+                    client.mixup_targets_b = None
+
                     wandb.log({'train step loss': client.loss.item()})
-                    
+
                     client.loss.backward()
-                    
+
                     self.sc_clients[client_id].remote_activations2 = client.remote_activations2
                     self.sc_clients[client_id].backward_center()
-                    
+
                     client.step_back()
-                    #client.back_scheduler.step()
                     client.zero_grad_back()
-                    
+
                     self.sc_clients[client_id].center_optimizer.step()
                     self.sc_clients[client_id].center_optimizer.zero_grad()
-                    
-                    f1=client.calculate_train_metric()
-                    client.train_f1[-1] += f1 
-                    
-                    #print("train f1 per iteration: ",iteration,f1)
-                    wandb.log({f'train f1 / iter: client {client_id}':f1.item()})
+
+                    f1 = client.calculate_train_metric()
+                    client.train_f1[-1] += f1
+
+                    wandb.log({f'train f1 / iter: client {client_id}': f1.item()})
 
         # calculate per epoch metrics
         bal_accs, f1_macros = [], []
@@ -894,6 +959,15 @@ class ICTrainer:
         if self.pooling_mode:
             print('\n\nPOOLING MODE: ENABLED!')
 
+        # --- Mixup guard: pairing requires at least 2 samples per batch ---
+        if self.args.mixup:
+            assert self.train_batch_size >= 2, (
+                f"Mixup requires batch_size >= 2, but got batch_size={self.train_batch_size}. "
+                "Please re-run with -bs 2 or higher."
+            )
+            print(f"[Mixup] ENABLED — Beta({self.args.mixup_alpha}, {self.args.mixup_alpha}), "
+                  f"batch_size={self.train_batch_size}")
+
         self._create_save_dir()
         # disabled freeing GPU mem since key-value store needs to be refreshed
         # print('freeing some GPU...')
@@ -908,12 +982,23 @@ class ICTrainer:
         print(f'{"-"*25}\n\ncommence training...\n\n')
 
         for epoch in tqdm(range(self.args.epochs)):
-            
+
             if self.early_stop:
                 print(f"Early stopping at epoch {epoch}")
                 break
 
-            wandb.log({'epoch':epoch})
+            wandb.log({'epoch': epoch})
+
+            # --- Refresh KV store if enabled (also rebuilds mixup pairings) ---
+            if self.args.kv_refresh_rate > 0 and epoch % self.args.kv_refresh_rate == 0:
+                print(f"[KV] Refreshing key-value store at epoch {epoch}")
+                if self.args.mixup:
+                    # Clear old mixup pairings so new ones are generated with the fresh KV
+                    for c_id, client in self.clients.items():
+                        client.mixup_map.clear()
+                    print("[Mixup] Cleared mixup_map — will be rebuilt with refreshed KV store")
+                self.populate_key_value_store()
+                self.clear_cache()
 
             for c_id in self.client_ids:
                 self.clients[c_id].back_model.train()
@@ -925,7 +1010,7 @@ class ICTrainer:
             for c_id in self.client_ids:
                 self.clients[c_id].back_model.eval()
                 self.sc_clients[c_id].center_back_model.eval()
-                
+
             should_save = self.test_one_epoch(epoch)
             print(should_save)
             if should_save:

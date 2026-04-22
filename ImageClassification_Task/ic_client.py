@@ -87,9 +87,15 @@ class Client(Thread):
 
         self.loss_fn = nn.CrossEntropyLoss()
         #self.loss_fn = FocalLoss()
-        
-       
 
+        # --- Mixup (Option B) state ---
+        # Populated during KV store creation:
+        #   key   = id_a  (string, e.g. "0-0-37")
+        #   value = (target_b, lam)  – secondary label and mixing weight
+        self.mixup_map: dict = {}
+        # Set by the trainer just before calculate_loss() is called each iteration:
+        self.mixup_lam: float | None = None        # λ for the current batch
+        self.mixup_targets_b = None                 # secondary labels tensor for the current batch
 
     @torch.no_grad()
     def balanced_accuracy(self,preds,targets):
@@ -176,16 +182,24 @@ class Client(Thread):
     
     def calculate_loss(self, mode='train'):
         """
-        loss function to calculate loss for isic
+        Calculates the loss for the current batch.
+        If mixup is active (self.mixup_lam is not None), computes a
+        weighted sum of two cross-entropy losses using the same λ that
+        was used to blend the activations:
+            loss = λ · CE(pred, target_a) + (1-λ) · CE(pred, target_b)
+        Otherwise falls back to standard single-label CE.
         """
-        # self.loss=self.loss_fn(self.outputs, self.targets.view(-1).long()) # for CE loss
-        #print("calculate loss output", self.outputs.shape)
-        #print("calculate target", self.targets.shape)
-        self.loss = self.loss_fn(self.outputs, self.targets.long())
+        if self.mixup_lam is not None and self.mixup_targets_b is not None:
+            lam = self.mixup_lam
+            loss_a = self.loss_fn(self.outputs, self.targets.long())
+            loss_b = self.loss_fn(self.outputs, self.mixup_targets_b.long())
+            self.loss = lam * loss_a + (1.0 - lam) * loss_b
+        else:
+            self.loss = self.loss_fn(self.outputs, self.targets.long())
 
-        if mode=='train':
+        if mode == 'train':
             self.train_loss += self.loss.item()
-        elif mode=='test':
+        elif mode == 'test':
             self.test_loss += self.loss.item()
 
     @torch.no_grad()
