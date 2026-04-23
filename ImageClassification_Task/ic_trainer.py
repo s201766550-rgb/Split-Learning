@@ -457,7 +457,29 @@ class ICTrainer:
         print('generating testing samples in key-value store...')
         self.store_forward_mappings_kv(mode='test')
 
+    def _set_batch_mixup_metadata(self, client):
+        """
+        Attach per-sample mixup metadata for the current batch.
+        Falls back to lam=1.0 (no mixup contribution) when an id is missing.
+        """
+        if self.args.mixup and len(client.mixup_map) > 0:
+            batch_lams, batch_targets_b = [], []
+            for i, kid in enumerate(client.key):
+                entry = client.mixup_map.get(kid, None)
+                if entry is not None:
+                    target_b, lam = entry
+                    batch_lams.append(lam)
+                    batch_targets_b.append(target_b)
+                else:
+                    batch_lams.append(1.0)
+                    batch_targets_b.append(client.targets[i].item())
+            client.mixup_lam = torch.tensor(batch_lams, dtype=torch.float32, device=self.device)
+            client.mixup_targets_b = torch.tensor(batch_targets_b, dtype=torch.long, device=self.device)
+        else:
+            client.mixup_lam = None
+            client.mixup_targets_b = None
 
+    
     def train_one_epoch(self,epoch):
         """
         in this epoch:
@@ -488,33 +510,14 @@ class ICTrainer:
 
                     self.sc_clients[client_id].forward_center_front()
                     self.sc_clients[client_id].forward_center_back()
-                    client.remote_activations2 = self.sc_clients[client_id].remote_activations2
+                    # Simulate server->client transport in FP16, then restore FP32 on receive.
+                    remote_activations2_fp16 = self.sc_clients[client_id].remote_activations2.detach().half()
+                    client.remote_activations2 = remote_activations2_fp16.float().detach().requires_grad_(True)
 
                     client.forward_back()
 
                     # --- Mixup (Option B): load per-sample metadata before loss ---
-                    if self.args.mixup and len(client.mixup_map) > 0:
-                        batch_lams, batch_targets_b = [], []
-                        for i, kid in enumerate(client.key):
-                            entry = client.mixup_map.get(kid, None)
-                            if entry is not None:
-                                target_b, lam = entry
-                                batch_lams.append(lam)
-                                batch_targets_b.append(target_b)
-                            else:
-                                # fallback: treat as no-mixup (lam=1 -> only target_a contributes)
-                                batch_lams.append(1.0)
-                                batch_targets_b.append(client.targets[i].item())
-                        # Per-sample tensors so each sample uses its OWN lam from KV population
-                        client.mixup_lam = torch.tensor(
-                            batch_lams, dtype=torch.float32, device=self.device
-                        )
-                        client.mixup_targets_b = torch.tensor(
-                            batch_targets_b, dtype=torch.long, device=self.device
-                        )
-                    else:
-                        client.mixup_lam = None
-                        client.mixup_targets_b = None
+                    self._set_batch_mixup_metadata(client)
 
                     client.calculate_loss(mode='train')
 
@@ -526,7 +529,9 @@ class ICTrainer:
 
                     client.loss.backward()
 
-                    self.sc_clients[client_id].remote_activations2 = client.remote_activations2
+                    # Simulate client->server gradient transport in FP16, restore FP32 on server.
+                    remote_activations2_grad_fp16 = client.remote_activations2.grad.detach().half()
+                    self.sc_clients[client_id].remote_activations2.grad = remote_activations2_grad_fp16.float()
                     self.sc_clients[client_id].backward_center()
 
                     client.step_back()
@@ -598,8 +603,17 @@ class ICTrainer:
                 #for it in tqdm(range(client.num_iterations * self.args.kv_factor),desc="Training"):
                 for iteration in tqdm(range(client.num_iterations),desc="Personlaisation Phase Training"):
                     client.forward_back_personalise()
+
+                    # Apply the same per-sample mixup weighted CE as in generalization.
+                    self._set_batch_mixup_metadata(client)
+
                     client.calculate_loss(mode='train')
                     client.loss.backward()
+
+                    # Reset mixup fields after loss so test paths are never affected.
+                    client.mixup_lam = None
+                    client.mixup_targets_b = None
+
                     wandb.log({'train step loss': client.loss.item()})
                     client.step_back()
                     client.zero_grad_back()
@@ -730,7 +744,9 @@ class ICTrainer:
                     self.sc_clients[client_id].test_batchkeys = client.test_key
                     self.sc_clients[client_id].forward_center_front_test()
                     self.sc_clients[client_id].forward_center_back()
-                    client.remote_activations2 = self.sc_clients[client_id].remote_activations2
+                    # Simulate server->client activation transport in FP16 for validation path as well.
+                    remote_activations2_fp16 = self.sc_clients[client_id].remote_activations2.detach().half()
+                    client.remote_activations2 = remote_activations2_fp16.float()
                     client.forward_back()
                     client.calculate_loss(mode='test')
                     wandb.log({'Validation step loss': client.loss.item()})
