@@ -479,6 +479,27 @@ class ICTrainer:
             client.mixup_lam = None
             client.mixup_targets_b = None
 
+    def _transport_server_to_client(self, activations, requires_grad):
+        """
+        Simulate transport precision for server->client activations.
+        """
+        if self.args.FP16:
+            transported = activations.detach().half().float().detach()
+        else:
+            transported = activations.detach()
+
+        if requires_grad:
+            transported = transported.requires_grad_(True)
+        return transported
+
+    def _transport_client_to_server_grad(self, grad):
+        """
+        Simulate transport precision for client->server gradients.
+        """
+        if self.args.FP16:
+            return grad.detach().half().float()
+        return grad.detach()
+
     
     def train_one_epoch(self,epoch):
         """
@@ -510,9 +531,10 @@ class ICTrainer:
 
                     self.sc_clients[client_id].forward_center_front()
                     self.sc_clients[client_id].forward_center_back()
-                    # Simulate server->client transport in FP16, then restore FP32 on receive.
-                    remote_activations2_fp16 = self.sc_clients[client_id].remote_activations2.detach().half()
-                    client.remote_activations2 = remote_activations2_fp16.float().detach().requires_grad_(True)
+                    client.remote_activations2 = self._transport_server_to_client(
+                        self.sc_clients[client_id].remote_activations2,
+                        requires_grad=True,
+                    )
 
                     client.forward_back()
 
@@ -529,9 +551,9 @@ class ICTrainer:
 
                     client.loss.backward()
 
-                    # Simulate client->server gradient transport in FP16, restore FP32 on server.
-                    remote_activations2_grad_fp16 = client.remote_activations2.grad.detach().half()
-                    self.sc_clients[client_id].remote_activations2.grad = remote_activations2_grad_fp16.float()
+                    self.sc_clients[client_id].remote_activations2.grad = self._transport_client_to_server_grad(
+                        client.remote_activations2.grad
+                    )
                     self.sc_clients[client_id].backward_center()
 
                     client.step_back()
@@ -744,9 +766,10 @@ class ICTrainer:
                     self.sc_clients[client_id].test_batchkeys = client.test_key
                     self.sc_clients[client_id].forward_center_front_test()
                     self.sc_clients[client_id].forward_center_back()
-                    # Simulate server->client activation transport in FP16 for validation path as well.
-                    remote_activations2_fp16 = self.sc_clients[client_id].remote_activations2.detach().half()
-                    client.remote_activations2 = remote_activations2_fp16.float()
+                    client.remote_activations2 = self._transport_server_to_client(
+                        self.sc_clients[client_id].remote_activations2,
+                        requires_grad=False,
+                    )
                     client.forward_back()
                     client.calculate_loss(mode='test')
                     wandb.log({'Validation step loss': client.loss.item()})
@@ -984,6 +1007,8 @@ class ICTrainer:
             )
             print(f"[Mixup] ENABLED — Beta({self.args.mixup_alpha}, {self.args.mixup_alpha}), "
                   f"batch_size={self.train_batch_size}")
+
+        print(f"[Transport] FP16 {'ENABLED' if self.args.FP16 else 'DISABLED'}")
 
         self._create_save_dir()
         # disabled freeing GPU mem since key-value store needs to be refreshed

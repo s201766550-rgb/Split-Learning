@@ -177,6 +177,15 @@ def parse_arguments():
         help="Alpha (concentration) parameter for the Beta distribution used to sample mixup lambda (default: 1.0 = uniform)",
     )
 
+    parser.add_argument(
+        "--FP16",
+        "--fp16",
+        dest="FP16",
+        action="store_true",
+        default=False,
+        help="Enable FP16 transport simulation for server->client activations and client->server gradients",
+    )
+
 
     args = parser.parse_args()
     return args
