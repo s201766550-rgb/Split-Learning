@@ -531,10 +531,14 @@ class ICTrainer:
 
                     self.sc_clients[client_id].forward_center_front()
                     self.sc_clients[client_id].forward_center_back()
-                    client.remote_activations2 = self._transport_server_to_client(
-                        self.sc_clients[client_id].remote_activations2,
-                        requires_grad=True,
-                    )
+                    if self.args.FP16:
+                        client.remote_activations2 = self._transport_server_to_client(
+                            self.sc_clients[client_id].remote_activations2,
+                            requires_grad=True,
+                        )
+                    else:
+                        # Exact baseline path: direct FP32 handoff (same as original code).
+                        client.remote_activations2 = self.sc_clients[client_id].remote_activations2
 
                     client.forward_back()
 
@@ -551,9 +555,13 @@ class ICTrainer:
 
                     client.loss.backward()
 
-                    self.sc_clients[client_id].remote_activations2.grad = self._transport_client_to_server_grad(
-                        client.remote_activations2.grad
-                    )
+                    if self.args.FP16:
+                        self.sc_clients[client_id].remote_activations2.grad = self._transport_client_to_server_grad(
+                            client.remote_activations2.grad
+                        )
+                    else:
+                        # Exact baseline path: pass the same tensor object back before server backward.
+                        self.sc_clients[client_id].remote_activations2 = client.remote_activations2
                     self.sc_clients[client_id].backward_center()
 
                     client.step_back()
@@ -766,10 +774,14 @@ class ICTrainer:
                     self.sc_clients[client_id].test_batchkeys = client.test_key
                     self.sc_clients[client_id].forward_center_front_test()
                     self.sc_clients[client_id].forward_center_back()
-                    client.remote_activations2 = self._transport_server_to_client(
-                        self.sc_clients[client_id].remote_activations2,
-                        requires_grad=False,
-                    )
+                    if self.args.FP16:
+                        client.remote_activations2 = self._transport_server_to_client(
+                            self.sc_clients[client_id].remote_activations2,
+                            requires_grad=False,
+                        )
+                    else:
+                        # Exact baseline path: direct FP32 handoff for validation.
+                        client.remote_activations2 = self.sc_clients[client_id].remote_activations2
                     client.forward_back()
                     client.calculate_loss(mode='test')
                     wandb.log({'Validation step loss': client.loss.item()})
