@@ -88,6 +88,7 @@ class Client(Thread):
 
         self.loss_fn = nn.CrossEntropyLoss()
         #self.loss_fn = FocalLoss()
+        self.use_fp16 = False
 
         # --- Mixup (Option B) state ---
         # Populated during KV store creation:
@@ -356,8 +357,12 @@ class Client(Thread):
 
 
     def get_remote_activations2(self):
-        # Server sends activation in FP16 → cast back to FP32 for stable computation
-        self.remote_activations2 = get_object(self.socket).float().requires_grad_(True)
+        # Receive activation from server; cast only when FP16 transport is enabled.
+        remote_activations2 = get_object(self.socket)
+        if self.use_fp16:
+            # Server sends FP16 only when transport simulation is enabled.
+            remote_activations2 = remote_activations2.float()
+        self.remote_activations2 = remote_activations2.requires_grad_(True)
 
 
     def idle(self):
@@ -369,8 +374,12 @@ class Client(Thread):
     
 
     def send_remote_activations2_grads(self):
-        # Cast gradient to FP16 before sending → 2× bandwidth reduction on client→server path
-        send_object(self.socket, self.remote_activations2.grad.half())
+        # Send gradient to server; cast only when FP16 transport is enabled.
+        remote_grad = self.remote_activations2.grad
+        if self.use_fp16:
+            # Client sends FP16 gradients only when transport simulation is enabled.
+            remote_grad = remote_grad.half()
+        send_object(self.socket, remote_grad)
 
 
     def step_front(self):
