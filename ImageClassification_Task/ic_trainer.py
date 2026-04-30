@@ -585,6 +585,11 @@ class ICTrainer:
     def _add_comm_bytes(self, key, num_bytes):
         self.comm_epoch_bytes[key] += int(num_bytes)
 
+    def _wandb_log_epoch(self, metrics, epoch):
+        payload = {'epoch': int(epoch)}
+        payload.update(metrics)
+        wandb.log(payload)
+
     def _log_comm_epoch(self, epoch):
         total = (
             self.comm_epoch_bytes['comm/sl/c2s_activation_bytes_epoch']
@@ -593,14 +598,14 @@ class ICTrainer:
             + self.comm_epoch_bytes['comm/fl/upload_bytes_epoch']
             + self.comm_epoch_bytes['comm/fl/download_bytes_epoch']
         )
-        wandb.log({
+        self._wandb_log_epoch({
             'comm/sl/c2s_activation_bytes_epoch': self.comm_epoch_bytes['comm/sl/c2s_activation_bytes_epoch'],
             'comm/sl/s2c_activation_bytes_epoch': self.comm_epoch_bytes['comm/sl/s2c_activation_bytes_epoch'],
             'comm/sl/c2s_grad_bytes_epoch': self.comm_epoch_bytes['comm/sl/c2s_grad_bytes_epoch'],
             'comm/fl/upload_bytes_epoch': self.comm_epoch_bytes['comm/fl/upload_bytes_epoch'],
             'comm/fl/download_bytes_epoch': self.comm_epoch_bytes['comm/fl/download_bytes_epoch'],
             'comm/total_bytes_epoch': total,
-        }, step=epoch)
+        }, epoch)
 
 
     def train_one_epoch(self,epoch):
@@ -701,10 +706,10 @@ class ICTrainer:
         self.overall_f1['train'][-1] /= self.num_clients
         # print("avg train f1 all clients: ", self.overall_f1['train'][-1].item())
         # print("avg train accuracy all clients: ", self.overall_acc['train'][-1])
-        wandb.log({'generalization/avg train f1 all clients': self.overall_f1['train'][-1].item()}, step=epoch)
-        wandb.log({'generalization/avg train bal acc all clients': bal_acc}, step=epoch)
-        wandb.log({'generalization/avg train f1 macro all clients': f1_macro}, step=epoch)
-        wandb.log({'generalization/avg train loss all clients': avg_loss / self.num_clients}, step=epoch)
+        self._wandb_log_epoch({'generalization/avg train f1 all clients': self.overall_f1['train'][-1].item()}, epoch)
+        self._wandb_log_epoch({'generalization/avg train bal acc all clients': bal_acc}, epoch)
+        self._wandb_log_epoch({'generalization/avg train f1 macro all clients': f1_macro}, epoch)
+        self._wandb_log_epoch({'generalization/avg train loss all clients': avg_loss / self.num_clients}, epoch)
         self.merge_model_weights(epoch)
         #if not self.pooling_mode:
             # merge model weights (center and back)
@@ -803,10 +808,10 @@ class ICTrainer:
         self.overall_f1['train'][-1] /= self.num_clients
         # print("avg train f1 all clients: ", self.overall_f1['train'][-1].item())
         # print("avg train accuracy all clients: ", self.overall_acc['train'][-1])
-        wandb.log({'personalize/avg train f1 all clients': self.overall_f1['train'][-1].item()}, step=epoch)
-        wandb.log({'personalize/avg train bal acc all clients': bal_acc}, step=epoch)
-        wandb.log({'personalize/avg train f1 macro all clients': f1_macro}, step=epoch)
-        wandb.log({'personalize/avg train loss all clients': avg_loss / self.num_clients}, step=epoch)
+        self._wandb_log_epoch({'personalize/avg train f1 all clients': self.overall_f1['train'][-1].item()}, epoch)
+        self._wandb_log_epoch({'personalize/avg train bal acc all clients': bal_acc}, epoch)
+        self._wandb_log_epoch({'personalize/avg train f1 macro all clients': f1_macro}, epoch)
+        self._wandb_log_epoch({'personalize/avg train loss all clients': avg_loss / self.num_clients}, epoch)
         
     
     @torch.no_grad()
@@ -859,10 +864,10 @@ class ICTrainer:
         self.overall_f1['test'][-1] /= self.num_clients
         # print("validation f1: ", self.overall_f1['test'][-1])
         # print("validation acc: ", self.overall_acc['test'][-1])
-        wandb.log({'personalize/Validation avg f1 all clients': self.overall_f1['test'][-1].item()}, step=epoch)
-        wandb.log({'personalize/validation avg accuracy all clients': bal_acc}, step=epoch)
-        wandb.log({'personalize/Validation avg f1 macro all clients': bal_acc}, step=epoch)
-        wandb.log({'personalize/Validation avg loss all clients': avg_loss / self.num_clients}, step=epoch) 
+        self._wandb_log_epoch({'personalize/Validation avg f1 all clients': self.overall_f1['test'][-1].item()}, epoch)
+        self._wandb_log_epoch({'personalize/validation avg accuracy all clients': bal_acc}, epoch)
+        self._wandb_log_epoch({'personalize/Validation avg f1 macro all clients': bal_acc}, epoch)
+        self._wandb_log_epoch({'personalize/Validation avg loss all clients': avg_loss / self.num_clients}, epoch) 
 
     @torch.no_grad()
     def test_one_epoch_disc(self, epoch):
@@ -1024,20 +1029,20 @@ class ICTrainer:
         self.overall_f1['test'][-1] /= self.num_clients
         # print("validation f1: ", self.overall_f1['test'][-1])
         # print("validation acc: ", self.overall_acc['test'][-1])
-        wandb.log({'generalization/Validation avg f1 all clients': self.overall_f1['test'][-1].item()}, step=epoch)
-        wandb.log({'generalization/validation avg accuracy all clients': bal_acc}, step=epoch)
-        wandb.log({'generalization/Validation avg f1 macro all clients': bal_acc}, step=epoch)
-        wandb.log({'generalization/Validation avg loss all clients': avg_loss / self.num_clients}, step=epoch) 
+        self._wandb_log_epoch({'generalization/Validation avg f1 all clients': self.overall_f1['test'][-1].item()}, epoch)
+        self._wandb_log_epoch({'generalization/validation avg accuracy all clients': bal_acc}, epoch)
+        self._wandb_log_epoch({'generalization/Validation avg f1 macro all clients': bal_acc}, epoch)
+        self._wandb_log_epoch({'generalization/Validation avg loss all clients': avg_loss / self.num_clients}, epoch) 
         if self.overall_acc['test'][-1] > self.best_acc:
             # print(self.best_acc)
             self.best_acc = self.overall_acc['test'][-1]
             self.best_epoch = epoch
             self.early_stop_counter = 0
             # print(f"MAX Validation Accuracy Score: {self.best_acc} @ epoch {self.best_epoch}")
-            wandb.log({
+            self._wandb_log_epoch({
                 'generalization/max validation accuracy score':self.best_acc,
                 'generalization/max_validation_accuarcy_epoch':self.best_epoch
-            }, step=epoch)
+            }, epoch)
             return True
         else:
             self.early_stop_counter += 1
@@ -1345,7 +1350,7 @@ class ICTrainer:
                 # print(f"Early stopping at epoch {epoch}")
                 break
 
-            wandb.log({'training/epoch': epoch}, step=epoch)
+            self._wandb_log_epoch({'training/epoch': epoch}, epoch)
 
             for c_id in self.client_ids:
                 self.clients[c_id].back_model.train()
@@ -1443,6 +1448,13 @@ class ICTrainer:
             job_type='train',
             mode='online' if self.log_wandb else 'disabled'
         )
+        if self.log_wandb:
+            wandb.define_metric('epoch')
+            wandb.define_metric('comm/*', step_metric='epoch')
+            wandb.define_metric('generalization/avg*', step_metric='epoch')
+            wandb.define_metric('generalization/max*', step_metric='epoch')
+            wandb.define_metric('personalize/avg*', step_metric='epoch')
+            wandb.define_metric('training/epoch', step_metric='epoch')
 
         self.seed()
 
