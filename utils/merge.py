@@ -11,14 +11,14 @@ def merge_grads(normalized_data_sizes, params):
     for j,col in enumerate(zip(*params)):
         avg = 0
         for i,param in enumerate(col):
-            print('param:',param,param.grad,type(param.grad))
+            # print('param:',param,param.grad,type(param.grad))
             avg += normalized_data_sizes[i] * param.grad
             # avg += param.grad
 
         # avg /= num_clients  # (since we are already doing weighted adding of gradients)
         for param in col:
             param.grad = copy.deepcopy(avg)
-            # print("is para grad equal to average?", param.grad)
+           #  # print("is para grad equal to average?", param.grad)
 
     return
 

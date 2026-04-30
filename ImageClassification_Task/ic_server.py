@@ -14,9 +14,9 @@ import numpy as np
 def handle(client, addr, file):
     buffsize = 1024
     # file = '/home/ashutosh/score_report.pdf'
-    # print('File size:', os.path.getsize(file))
+   #  # print('File size:', os.path.getsize(file))
     fsize = struct.pack('!I', len(file))
-    print('Len of file size struct:', len(fsize))
+    # print('Len of file size struct:', len(fsize))
     client.send(fsize)
     with open(file, 'rb') as fd:
         while True:
@@ -96,25 +96,26 @@ class ConnectedClient(object):
 
     def forward_center_front(self):
         if self.kv_flag==1:
-            #print("Size of remote_activations1:", self.remote_activations1.size())
+           #  #print("Size of remote_activations1:", self.remote_activations1.size())
             self.middle_activations=self.center_front_model(self.remote_activations1)
-            #print("Size of middle_activations:", self.middle_activations.size())
+           #  #print("Size of middle_activations:", self.middle_activations.size())
             local_middle_activations=list(self.middle_activations.cpu().detach().numpy())
-            #print("Length of batchkey",len(self.batchkeys))
+           #  #print("Length of batchkey",len(self.batchkeys))
             for i in range(0, len(self.batchkeys)):
-                #print(self.batchkeys[i])
+               #  #print(self.batchkeys[i])
                 self.activation_mappings[self.batchkeys[i]]=local_middle_activations[i]
             
         else:
             # Ensure all keys in batchkeys exist in activation_mappings
             missing_keys = [key for key in self.batchkeys if key not in self.activation_mappings]
             if missing_keys:
-                print(f"Warning: Missing keys in activation_mappings: {missing_keys}")
+                # print(f"Warning: Missing keys in activation_mappings: {missing_keys}")
+                pass
 
             # Retrieve activations for batchkeys from activation_mappings
             valid_keys = [key for key in self.batchkeys if key in self.activation_mappings]
             if not valid_keys:
-                print("Error: No valid keys found in activation_mappings.")
+                # print("Error: No valid keys found in activation_mappings.")
                 return
 
             # Convert the list of numpy arrays to a single numpy array
@@ -123,7 +124,7 @@ class ConnectedClient(object):
             
             # Convert the numpy array to a tensor and move it to the appropriate device
             self.middle_activations = torch.tensor(activations_array, device=self.device)
-            #print("Middle activations created from train activation_mappings based on batchkeys.")
+           #  #print("Middle activations created from train activation_mappings based on batchkeys.")
     
     def forward_discriminator(self):
         self.reconstructions = self.discriminator(self.middle_activations)
@@ -150,35 +151,36 @@ class ConnectedClient(object):
             
     def forward_center_front_test(self):
         if self.kv_test_flag==1:
-            #print("Size of remote_activations1:", self.remote_activations1.size())
+           #  #print("Size of remote_activations1:", self.remote_activations1.size())
             self.middle_activations=self.center_front_model(self.remote_activations1)
-            #print("Size of middle_activations:", self.middle_activations.size())
+           #  #print("Size of middle_activations:", self.middle_activations.size())
             local_middle_activations=list(self.middle_activations.cpu().detach().numpy())
-            #print("Length of batchkey",len(self.test_batchkeys))
+           #  #print("Length of batchkey",len(self.test_batchkeys))
             for i in range(0, len(self.test_batchkeys)):
-                #print(self.test_batchkeys[i])
+               #  #print(self.test_batchkeys[i])
                 self.test_activation_mappings[self.test_batchkeys[i]]=local_middle_activations[i]
             
         else:
             # Ensure all keys in batchkeys exist in activation_mappings
             missing_test_keys = [key for key in self.test_batchkeys if key not in self.test_activation_mappings]
             if missing_test_keys:
-                print(f"Warning: Missing keys in activation_mappings: {missing_test_keys}")
+                # print(f"Warning: Missing keys in activation_mappings: {missing_test_keys}")
+                pass
 
             # Retrieve activations for batchkeys from activation_mappings
             valid_test_keys = [key for key in self.test_batchkeys if key in self.test_activation_mappings]
             if not valid_test_keys:
-                print("Error: No valid keys found in activation_mappings.")
+                # print("Error: No valid keys found in activation_mappings.")
                 return
-            #print("valid keys", valid_test_keys)
+           #  #print("valid keys", valid_test_keys)
             # Convert the list of numpy arrays to a single numpy array
             activations_test_list = [self.test_activation_mappings[key] for key in valid_test_keys]
             activations_test_array = np.array(activations_test_list)
             
             # Convert the numpy array to a tensor and move it to the appropriate device
             self.middle_activations = torch.tensor(activations_test_array, device=self.device)
-            #print("Size of middle_activations:", self.middle_activations.size())
-            #print("Middle activations created from validation activation_mappings based on batchkeys.")
+           #  #print("Size of middle_activations:", self.middle_activations.size())
+           #  #print("Middle activations created from validation activation_mappings based on batchkeys.")
 
     def forward_center_front_test_old(self):
         self.middle_activations=self.center_front_model(self.remote_activations1)
@@ -190,7 +192,7 @@ class ConnectedClient(object):
 
     def forward_center_back(self):
         self.activations2=self.center_back_model(self.middle_activations)
-        #print("Size of activations2:", self.activations2.size())
+       #  #print("Size of activations2:", self.activations2.size())
         self.remote_activations2=self.activations2.detach().requires_grad_(True)
         
 

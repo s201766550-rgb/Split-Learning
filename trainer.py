@@ -5,7 +5,7 @@ from pprint import pprint
 if __name__ == '__main__':
     args = parse_arguments()
 
-    pprint(vars(args))
+    # pprint(vars(args))
 
     if args.dataset == 'CIFAR10':
         if args.use_key_value_store:
@@ -16,4 +16,5 @@ if __name__ == '__main__':
         trainer.fit()
 
     else:
-        print('invalid dataset -_-')
+        # print('invalid dataset -_-')
+        pass

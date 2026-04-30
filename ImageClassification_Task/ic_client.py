@@ -93,12 +93,12 @@ class Client(Thread):
         # --- Mixup (Option B) state ---
         # Populated during KV store creation:
         #   key   = id_a  (string, e.g. "0-0-37")
-        #   value = (target_b, lam)  – secondary label and mixing weight
+        #   value = (target_b, lam)  â€“ secondary label and mixing weight
         self.mixup_map: dict = {}
         # Set by the trainer just before calculate_loss() is called each iteration.
         # Both are per-sample tensors (length = batch size) so each sample uses
-        # its own λ from when it was mixed during KV-store population.
-        self.mixup_lam = None          # 1-D float tensor [B] of per-sample λ values
+        # its own Î» from when it was mixed during KV-store population.
+        self.mixup_lam = None          # 1-D float tensor [B] of per-sample Î» values
         self.mixup_targets_b = None    # 1-D long  tensor [B] of secondary labels
 
     @torch.no_grad()
@@ -121,11 +121,11 @@ class Client(Thread):
 	    
     @torch.no_grad()
     def run_metric(self,preds,targets):
-        #print("Run metric")
-        #print("Shapes - preds:", preds.shape, "targets:", targets.shape)
-        #print(preds.shape[1])
-        #print(torch.argmax(preds,dim=1).float())
-        #print(targets.squeeze())
+       #  #print("Run metric")
+       #  #print("Shapes - preds:", preds.shape, "targets:", targets.shape)
+       #  #print(preds.shape[1])
+       #  #print(torch.argmax(preds,dim=1).float())
+       #  #print(targets.squeeze())
         return f1_score(
             #preds=torch.argmax(preds,dim=1).float(),
             preds=preds.argmax(dim=1),
@@ -144,9 +144,9 @@ class Client(Thread):
             targets = torch.cat(self.train_targets, dim=0)
             #preds = torch.vstack(self.train_preds)
             #targets = torch.vstack(self.train_targets)
-            #print("Shapes - preds:", preds.shape, "targets:", targets.shape)
+           #  #print("Shapes - preds:", preds.shape, "targets:", targets.shape)
             bal_acc = self.normal_accuracy(preds, targets)
-            #print(bal_acc)
+           #  #print(bal_acc)
             f1_macro = f1_score(
                 preds=torch.argmax(preds,dim=1).float(),
                 target=targets.squeeze(),
@@ -161,9 +161,9 @@ class Client(Thread):
             targets = torch.cat(self.test_targets, dim=0)
             #preds = torch.vstack(self.test_preds)
             #targets = torch.vstack(self.test_targets)
-            #print("Shapes - preds:", preds.shape, "targets:", targets.shape)
+           #  #print("Shapes - preds:", preds.shape, "targets:", targets.shape)
             bal_acc = self.normal_accuracy(preds, targets)
-            #print(bal_acc)
+           #  #print(bal_acc)
             f1_macro = f1_score(
                 preds=torch.argmax(preds,dim=1).float(),
                 target=targets.squeeze(),
@@ -188,17 +188,17 @@ class Client(Thread):
         """
         Calculates the loss for the current batch.
         If mixup is active, computes a PER-SAMPLE weighted CE loss so that
-        each sample uses exactly the λ that was used to blend its activation
+        each sample uses exactly the Î» that was used to blend its activation
         during KV-store population:
-            loss_i = λ_i · CE(pred_i, target_a_i) + (1-λ_i) · CE(pred_i, target_b_i)
-            loss   = mean(loss_i)          ← averaged over the batch
+            loss_i = Î»_i Â· CE(pred_i, target_a_i) + (1-Î»_i) Â· CE(pred_i, target_b_i)
+            loss   = mean(loss_i)          â† averaged over the batch
         Otherwise falls back to standard single-label CE.
         """
         if self.mixup_lam is not None and self.mixup_targets_b is not None:
-            # self.mixup_lam      : float tensor [B] — per-sample λ
-            # self.mixup_targets_b: long  tensor [B] — per-sample secondary label
+            # self.mixup_lam      : float tensor [B] â€” per-sample Î»
+            # self.mixup_targets_b: long  tensor [B] â€” per-sample secondary label
             lam = self.mixup_lam.to(self.outputs.device)          # [B]
-            # CE loss per sample (reduction='none' → shape [B])
+            # CE loss per sample (reduction='none' â†’ shape [B])
             loss_fn_none = nn.CrossEntropyLoss(reduction='none')
             loss_a = loss_fn_none(self.outputs, self.targets.long())           # [B]
             loss_b = loss_fn_none(self.outputs, self.mixup_targets_b.long())  # [B]
@@ -215,8 +215,8 @@ class Client(Thread):
     def calculate_train_metric(self):
         preds = self.outputs
         targets = self.targets
-        #print("Calculate train metric")
-        #print("Shapes - preds:", preds.shape, "targets:", targets.shape)
+       #  #print("Calculate train metric")
+       #  #print("Shapes - preds:", preds.shape, "targets:", targets.shape)
         self.train_preds.append(preds.cpu())
         self.train_targets.append(targets.cpu())
         f1 = self.run_metric(preds.cpu(),targets.cpu())
@@ -236,7 +236,7 @@ class Client(Thread):
 
     def connect_server(self, host='localhost', port=8000, BUFFER_SIZE=4096):
         self.socket, self.server_socket = multiprocessing.Pipe()
-        print(f"[*] Client {self.id} connecting to {host}")
+        # print(f"[*] Client {self.id} connecting to {host}")
 
 
     def create_DataLoader(self, train_batch_size, test_batch_size):
@@ -277,8 +277,8 @@ class Client(Thread):
     def forward_back(self):
         # self.back_model.to(self.device)
         self.outputs = self.back_model(self.remote_activations2)
-        #print("Size of clinet_activations1:", self.remote_activations2.size())
-        #print("Size of outputs",self.outputs.size())
+       #  #print("Size of clinet_activations1:", self.remote_activations2.size())
+       #  #print("Size of outputs",self.outputs.size())
         
     def forward_back_personalise(self):
         batch_data = next(self.iterator)
@@ -287,9 +287,9 @@ class Client(Thread):
         activations_list = [self.activation_mappings[key] for key in valid_keys]
         activations_array = np.array(activations_list)
         x2 = torch.tensor(activations_array, device=self.device)
-        #print("Size of x2",x2.size())
+       #  #print("Size of x2",x2.size())
         self.outputs = self.back_model(x2)
-        #print("Size of output",self.outputs.size())
+       #  #print("Size of output",self.outputs.size())
         
     def forward_back_personalise_test(self):
         batch_data = next(self.test_iterator)
@@ -298,9 +298,9 @@ class Client(Thread):
         activations_list = [self.activation_mappings[key] for key in valid_keys]
         activations_array = np.array(activations_list)
         x2 = torch.tensor(activations_array, device=self.device)
-        #print("Size of x2",x2.size())
+       #  #print("Size of x2",x2.size())
         self.outputs = self.back_model(x2)
-        #print("Size of output",self.outputs.size())
+       #  #print("Size of output",self.outputs.size())
         
         
 
@@ -308,7 +308,7 @@ class Client(Thread):
     def forward_front(self):
         batch_data = next(self.iterator)
         self.data, self.targets, self.key = batch_data['image'].to(self.device), batch_data['label'].to(self.device), batch_data['id'].to(self.device)
-        #print(self.key)
+       #  #print(self.key)
         
         # self.front_model.to(self.device)
         self.activations1 = self.front_model(self.data)
@@ -320,29 +320,29 @@ class Client(Thread):
         batch_data = next(self.iterator)
         #self.data, self.targets = batch_data['image'].to(self.device), batch_data['label'].to(self.device)
         self.data, self.targets, self.key = batch_data['image'].to(self.device), batch_data['label'].to(self.device), batch_data['id']
-        #print("Label", self.targets)
-        #print("keys",self.key)
+       #  #print("Label", self.targets)
+       #  #print("keys",self.key)
         # self.front_model.to(self.device)
         if self.kv_flag==1:
             self.activations1 = self.front_model(self.data)
-            #print("Size of data:", self.data.size())
-            #print("Size of clinet_activations1:", self.activations1.size())
+           #  #print("Size of data:", self.data.size())
+           #  #print("Size of clinet_activations1:", self.activations1.size())
             self.remote_activations1 = self.activations1.detach().requires_grad_(True)
 
 
     def forward_front_key_value_test(self):
-        #print("forward method")
-        #print("self.kv_flag",self.kv_test_flag)
+       #  #print("forward method")
+       #  #print("self.kv_flag",self.kv_test_flag)
         batch_data = next(self.test_iterator)
         self.data, self.targets , self.test_key= batch_data['image'].to(self.device), batch_data['label'].to(self.device), batch_data['id']
-        #print("target", self.targets)
-        #print("keys",self.test_key)
+       #  #print("target", self.targets)
+       #  #print("keys",self.test_key)
         # self.front_model.to(self.device)
         #self.activations1 = self.front_model(self.data)
         if self.kv_test_flag==1:
             self.activations1 = self.front_model(self.data)
-            #print("Size of data:", self.data.size())
-            #print("Size of clinet_activations1:", self.activations1.size())
+           #  #print("Size of data:", self.data.size())
+           #  #print("Size of clinet_activations1:", self.activations1.size())
             self.remote_activations1 = self.activations1.detach().requires_grad_(True)
 
 

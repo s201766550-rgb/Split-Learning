@@ -105,9 +105,9 @@ class ISICDataBuilder:
 if __name__ == '__main__':
     isic = ISICDataBuilder()
     train_ds, val_ds, test_ds = isic.get_datasets(0)
-    print(len(train_ds),len(val_ds), len(test_ds))
+    # print(len(train_ds),len(val_ds), len(test_ds))
     dl = torch.utils.data.DataLoader(train_ds,batch_size=16)
-    print(len(dl))
+    # print(len(dl))
     item = next(iter(dl))
     im,lb = item['image'], item['label']
-    print(im.shape, lb.shape)
+    # print(im.shape, lb.shape)

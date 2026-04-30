@@ -139,7 +139,7 @@ def setting2_dirch_val(train_full_dataset, test_full_dataset, num_users):
 
     for i in range(num_users):
         dirichlet_dist = np.random.dirichlet(np.ones(num_of_classes))
-        #print(f'for {i} dirchlet dist {dirichlet_dist}')
+       #  #print(f'for {i} dirchlet dist {dirichlet_dist}')
         num_samples_train = np.round(dirichlet_dist * total_train_samples_per_client).astype(int)
         num_samples_test = np.round(dirichlet_dist * total_test_samples_per_client).astype(int)
         num_samples_val = np.round(dirichlet_dist * total_val_samples_per_client).astype(int)
@@ -246,11 +246,11 @@ class CIFAR10DataBuilder:
 
         test_images = test_dataset.data[test_indices]
         test_labels = np.array(test_dataset.targets)[test_indices]
-        print("Training")
+        # print("Training")
         train_ds = CIFAR10Dataset(train_images, train_labels, client_id, 0, transform_train)
-        print("Validation")
+        # print("Validation")
         val_ds = CIFAR10Dataset(val_images, val_labels, client_id, 1,  transform_test)
-        print("Testing")
+        # print("Testing")
         test_ds = CIFAR10Dataset(test_images, test_labels, client_id, 2, transform_test)
 
         return train_ds, val_ds, test_ds
@@ -260,9 +260,9 @@ if __name__ == '__main__':
     client_id = 0
     train_ds, val_ds, test_ds = cifar_builder.get_datasets(client_id)
     
-    print(f"Train dataset size: {len(train_ds)}")
-    print(f"Validation dataset size: {len(val_ds)}")
-    print(f"Test dataset size: {len(test_ds)}")
+    # print(f"Train dataset size: {len(train_ds)}")
+    # print(f"Validation dataset size: {len(val_ds)}")
+    # print(f"Test dataset size: {len(test_ds)}")
 
     train_loader = DataLoader(train_ds, batch_size=16, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=16, shuffle=False)
@@ -271,4 +271,4 @@ if __name__ == '__main__':
     # Example of fetching a batch
     item = next(iter(train_loader))
     im, lb = item['image'], item['label']
-    print(f"Batch image shape: {im.shape}, Batch label shape: {lb.shape}")
+    # print(f"Batch image shape: {im.shape}, Batch label shape: {lb.shape}")
